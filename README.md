@@ -42,8 +42,17 @@ a registered `HD Push Device` and pushes to that agent's devices, so one admin k
 serves every agent using the app. `poll_site_url` also verifies device registrations
 (guest `register_device` echoes the caller's token back to this site's
 `get_logged_user`). Leave keys unset to disable polling. First run per agent primes
-state silently (no backfill storm); after that only new replies, assignments, and
-@mentions notify.
+state silently (no backfill storm); after that only new replies, assignments,
+@mentions, and SLA warnings notify.
+
+SLA warnings fire once when a ticket's first-response deadline (`response_by`) falls
+within the next 2 hours and the ticket isn't already responded/resolved/closed.
+Deadlines are read in the remote site's timezone — set `poll_timezone` (an IANA name
+like `Asia/Kolkata`, the default) if the remote site isn't on IST:
+
+```bash
+bench --site <site> set-config poll_timezone Asia/Kolkata
+```
 
 ## API
 

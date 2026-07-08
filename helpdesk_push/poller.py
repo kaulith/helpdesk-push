@@ -1,5 +1,7 @@
 import json
 import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import frappe
 import requests
@@ -7,6 +9,8 @@ import requests
 from helpdesk_push.fcm import send_to_agent
 
 STATE = "HD Push Poll State"
+SLA_EXEMPT = {"Closed", "Resolved", "Replied"}
+SLA_WINDOW_HOURS = 2
 
 
 def poll_all():
@@ -23,12 +27,13 @@ def poll_all():
     if not agents:
         return
 
+    tz = ZoneInfo(conf.get("poll_timezone") or "Asia/Kolkata")
     try:
         client = _Remote(site, key, secret)
         comments = client.recent_comments()
         state = _load_state()
         for agent in agents:
-            _poll_agent(client, agent, comments, state)
+            _poll_agent(client, agent, comments, state, tz)
         _save_state(state)
     except requests.RequestException:
         pass
@@ -36,13 +41,13 @@ def poll_all():
         frappe.log_error(frappe.get_traceback(), "helpdesk_push.poller")
 
 
-def _poll_agent(client, agent, comments, state):
+def _poll_agent(client, agent, comments, state, tz):
     assigned = client.assigned_ticket_ids(agent)
     tickets = client.tickets(assigned) if assigned else []
 
     seen = state.get(agent)
     if not seen or not seen.get("primed"):
-        state[agent] = _snapshot(assigned, tickets, comments)
+        state[agent] = _snapshot(assigned, tickets, comments, tz)
         return
 
     subjects = {t["name"]: (t.get("subject") or "") for t in tickets}
@@ -82,7 +87,19 @@ def _poll_agent(client, agent, comments, state):
         title = f"You were mentioned · #{ticket}" if mentioned else f"New comment · #{ticket}"
         send_to_agent(agent, title, plain[:120], {"ticketId": ticket or "", "type": "new_comment"})
 
-    state[agent] = _snapshot(assigned, tickets, comments, seen_comments)
+    warnable = _sla_warnable(tickets, tz)
+    prev_sla = set(seen.get("sla_warned", []))
+    for ticket in warnable - prev_sla:
+        hours = _hours_until(_ticket_field(tickets, ticket, "response_by"), tz)
+        detail = f"First response due in {hours}h" if hours is not None else "First response SLA approaching"
+        send_to_agent(
+            agent,
+            f"⚠️ SLA warning · #{ticket}",
+            f"{detail} — {subjects.get(ticket, '')}".rstrip(" —"),
+            {"ticketId": ticket, "type": "sla_warning"},
+        )
+
+    state[agent] = _snapshot(assigned, tickets, comments, tz, seen_comments, prev_sla | warnable)
 
 
 class _Remote:
@@ -120,7 +137,9 @@ class _Remote:
                 "/api/resource/HD Ticket",
                 {
                     "filters": json.dumps([["name", "in", ids[start : start + 50]]]),
-                    "fields": json.dumps(["name", "subject", "status", "last_customer_response"]),
+                    "fields": json.dumps(
+                        ["name", "subject", "status", "last_customer_response", "response_by"]
+                    ),
                     "limit_page_length": 100,
                 },
             )
@@ -137,13 +156,55 @@ class _Remote:
         )
 
 
-def _snapshot(assigned, tickets, comments, extra_comment_ids=frozenset()):
+def _sla_warnable(tickets, tz):
+    now = datetime.now(tz)
+    horizon = now + timedelta(hours=SLA_WINDOW_HOURS)
+    warnable = set()
+    for ticket in tickets:
+        if ticket.get("status") in SLA_EXEMPT:
+            continue
+        due = _parse_dt(ticket.get("response_by"), tz)
+        if due and now <= due <= horizon:
+            warnable.add(ticket["name"])
+    return warnable
+
+
+def _hours_until(response_by, tz):
+    due = _parse_dt(response_by, tz)
+    if not due:
+        return None
+    return round((due - datetime.now(tz)).total_seconds() / 3600, 1)
+
+
+def _parse_dt(value, tz):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value).split(".")[0], "%Y-%m-%d %H:%M:%S").replace(tzinfo=tz)
+    except ValueError:
+        return None
+
+
+def _ticket_field(tickets, name, field):
+    for ticket in tickets:
+        if ticket["name"] == name:
+            return ticket.get(field)
+    return None
+
+
+def _snapshot(assigned, tickets, comments, tz, extra_comment_ids=frozenset(), sla_carry=None):
     comment_ids = [c["name"] for c in comments if c.get("name")] + list(extra_comment_ids)
+    if sla_carry is None:
+        sla = _sla_warnable(tickets, tz)
+    else:
+        open_nonexempt = {t["name"] for t in tickets if t.get("status") not in SLA_EXEMPT}
+        sla = sla_carry & open_nonexempt
     return {
         "primed": True,
         "assignments": list(assigned),
         "replies": {t["name"]: (t.get("last_customer_response") or "") for t in tickets},
         "comment_ids": comment_ids[:500],
+        "sla_warned": list(sla),
     }
 
 
