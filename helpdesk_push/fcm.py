@@ -16,18 +16,17 @@ TITLES = {
 
 
 def notify_agent(agent, ticket, event_type):
-    devices = frappe.get_all("HD Push Device", filters={"agent": agent}, fields=["name", "device_token"])
-    if not devices:
-        return
-
     subject = frappe.db.get_value("HD Ticket", ticket, "subject") or ""
     title = f"{TITLES.get(event_type, 'Helpdesk')} · #{ticket}"
-    data = {"ticketId": str(ticket), "type": event_type}
+    send_to_agent(agent, title, subject, {"ticketId": str(ticket), "type": event_type})
 
+
+def send_to_agent(agent, title, body, data):
+    devices = frappe.get_all("HD Push Device", filters={"agent": agent}, fields=["name", "device_token"])
     for device in devices:
         if not device.device_token:
             continue
-        result = _send(device.device_token, title, subject, data)
+        result = _send(device.device_token, title, body, data)
         if result is False:
             frappe.delete_doc("HD Push Device", device.name, ignore_permissions=True, force=True)
 

@@ -13,3 +13,9 @@ doc_events = {
         "after_insert": "helpdesk_push.notifications.on_communication_insert",
     },
 }
+
+scheduler_events = {
+    "cron": {
+        "* * * * *": ["helpdesk_push.poller.poll_all"],
+    },
+}
