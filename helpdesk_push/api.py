@@ -4,24 +4,23 @@ from frappe.utils import now
 
 
 @frappe.whitelist(allow_guest=True)
-def register_device(device_token):
-    agent = _verified_agent()
-    if not agent:
-        frappe.throw("Could not verify agent", frappe.AuthenticationError)
+def register_device(device_token, agent_email):
+    if not _caller_verified():
+        frappe.throw("Unauthorized", frappe.AuthenticationError)
 
     existing = frappe.db.exists("HD Push Device", {"device_token": device_token})
     if existing:
-        frappe.db.set_value("HD Push Device", existing, {"agent": agent, "last_seen": now()})
+        frappe.db.set_value("HD Push Device", existing, {"agent": agent_email, "last_seen": now()})
     else:
         frappe.get_doc(
             {
                 "doctype": "HD Push Device",
                 "device_token": device_token,
-                "agent": agent,
+                "agent": agent_email,
                 "last_seen": now(),
             }
         ).insert(ignore_permissions=True)
-    return {"success": True, "agent": agent}
+    return {"success": True, "agent": agent_email}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -32,11 +31,11 @@ def unregister_device(device_token):
     return {"success": True}
 
 
-def _verified_agent():
+def _caller_verified():
     token = frappe.get_request_header("X-Remote-Token")
     site = frappe.conf.get("poll_site_url")
     if not (token and site):
-        return None
+        return False
     try:
         resp = requests.get(
             f"{site.rstrip('/')}/api/method/frappe.auth.get_logged_user",
@@ -44,7 +43,5 @@ def _verified_agent():
             timeout=10,
         )
     except requests.RequestException:
-        return None
-    if resp.status_code == 200:
-        return resp.json().get("message")
-    return None
+        return False
+    return resp.status_code == 200 and bool(resp.json().get("message"))
