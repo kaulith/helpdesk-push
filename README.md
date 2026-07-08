@@ -28,20 +28,22 @@ bench --site <site> set-config fcm_service_account_path sites/<site>/private/fil
 
 Hooks only fire on this site. To get notifications from a Helpdesk site you don't
 control (no app-install rights there), a cron job (every minute) polls its REST API
-with an agent's key and pushes via FCM. Set in site config:
+and pushes via FCM. Set in site config:
 
 ```bash
 bench --site <site> set-config poll_site_url https://support.frappe.io
-bench --site <site> set-config poll_api_key <agent_key>
-bench --site <site> set-config -p poll_api_secret <agent_secret>
-bench --site <site> set-config poll_agent_email <agent@remote>
-bench --site <site> set-config poll_notify_agent <agent_on_this_site>
+bench --site <site> set-config poll_api_key <system_manager_key>
+bench --site <site> set-config -p poll_api_secret <system_manager_secret>
 ```
 
-`poll_agent_email` filters "assigned to me" / @mentions on the remote site.
-`poll_notify_agent` is the local `HD Push Device` agent to push to. Leave any key
-unset to disable polling. First run primes state silently (no backfill storm);
-subsequent runs notify only on new replies, assignments, and @mentions.
+`poll_api_key` must be a System Manager on the remote site — the poller queries per
+agent (`allocated_to`) across all tickets. It polls for each distinct agent that has
+a registered `HD Push Device` and pushes to that agent's devices, so one admin key
+serves every agent using the app. `poll_site_url` also verifies device registrations
+(guest `register_device` echoes the caller's token back to this site's
+`get_logged_user`). Leave keys unset to disable polling. First run per agent primes
+state silently (no backfill storm); after that only new replies, assignments, and
+@mentions notify.
 
 ## API
 

@@ -14,59 +14,64 @@ def poll_all():
     site = conf.get("poll_site_url")
     key = conf.get("poll_api_key")
     secret = conf.get("poll_api_secret")
-    agent = conf.get("poll_agent_email")
-    notify = conf.get("poll_notify_agent")
-    if not (site and key and secret and agent and notify):
+    if not (site and key and secret):
         return
-    if not frappe.db.exists("HD Push Device", {"agent": notify}):
+
+    agents = sorted(
+        {d.agent for d in frappe.get_all("HD Push Device", fields=["agent"], distinct=True) if d.agent}
+    )
+    if not agents:
         return
 
     try:
-        _run(_Remote(site, key, secret), agent, notify)
+        client = _Remote(site, key, secret)
+        comments = client.recent_comments()
+        state = _load_state()
+        for agent in agents:
+            _poll_agent(client, agent, comments, state)
+        _save_state(state)
     except requests.RequestException:
         pass
     except Exception:
         frappe.log_error(frappe.get_traceback(), "helpdesk_push.poller")
 
 
-def _run(client, agent, notify):
+def _poll_agent(client, agent, comments, state):
     assigned = client.assigned_ticket_ids(agent)
     tickets = client.tickets(assigned) if assigned else []
-    comments = client.recent_comments()
 
-    state = _load_state()
-    if not state.get("primed"):
-        _save_state(_snapshot(assigned, tickets, comments))
+    seen = state.get(agent)
+    if not seen or not seen.get("primed"):
+        state[agent] = _snapshot(assigned, tickets, comments)
         return
 
     subjects = {t["name"]: (t.get("subject") or "") for t in tickets}
 
-    seen_assignments = set(state.get("assignments", []))
-    for ticket in assigned - seen_assignments:
+    for ticket in assigned - set(seen.get("assignments", [])):
         send_to_agent(
-            notify,
+            agent,
             f"New ticket assigned · #{ticket}",
             subjects.get(ticket, ""),
             {"ticketId": ticket, "type": "new_assignment"},
         )
 
-    prev_replies = state.get("replies", {})
+    prev_replies = seen.get("replies", {})
     for ticket in tickets:
         name = ticket["name"]
         reply = ticket.get("last_customer_response") or ""
         if reply and prev_replies.get(name) != reply:
             send_to_agent(
-                notify,
+                agent,
                 f"Customer replied · #{name}",
                 subjects.get(name, ""),
                 {"ticketId": name, "type": "customer_reply"},
             )
 
-    seen_comments = set(state.get("comment_ids", []))
+    seen_comments = set(seen.get("comment_ids", []))
     username = agent.split("@")[0]
     for comment in comments:
-        name = comment.get("name")
-        if not name or name in seen_comments or comment.get("commented_by") == agent:
+        cid = comment.get("name")
+        if not cid or cid in seen_comments or comment.get("commented_by") == agent:
             continue
         content = comment.get("content") or ""
         mentioned = agent.lower() in content.lower() or f"@{username}".lower() in content.lower()
@@ -75,9 +80,9 @@ def _run(client, agent, notify):
             continue
         plain = re.sub(r"<[^>]*>", "", content).strip()
         title = f"You were mentioned · #{ticket}" if mentioned else f"New comment · #{ticket}"
-        send_to_agent(notify, title, plain[:120], {"ticketId": ticket or "", "type": "new_comment"})
+        send_to_agent(agent, title, plain[:120], {"ticketId": ticket or "", "type": "new_comment"})
 
-    _save_state(_snapshot(assigned, tickets, comments, seen_comments))
+    state[agent] = _snapshot(assigned, tickets, comments, seen_comments)
 
 
 class _Remote:
