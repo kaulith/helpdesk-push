@@ -1,0 +1,8 @@
+*.pyc
+__pycache__/
+*.egg-info
+.venv
+node_modules
+*.log
+firebase-service-account.json
+serviceAccountKey.json

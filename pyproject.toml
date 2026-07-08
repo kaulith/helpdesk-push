@@ -1,0 +1,23 @@
+[project]
+name = "helpdesk_push"
+authors = [
+    { name = "Kaushal Shriwas", email = "kristopherj554@gmail.com" }
+]
+description = "Push notifications for the Helpdesk mobile app"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "pyjwt",
+    "requests",
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "helpdesk_push"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=15.0.0"
