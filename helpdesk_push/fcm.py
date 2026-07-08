@@ -15,14 +15,14 @@ TITLES = {
 }
 
 
-def notify_agent(agent, ticket, event):
+def notify_agent(agent, ticket, event_type):
     devices = frappe.get_all("HD Push Device", filters={"agent": agent}, fields=["name", "device_token"])
     if not devices:
         return
 
     subject = frappe.db.get_value("HD Ticket", ticket, "subject") or ""
-    title = f"{TITLES.get(event, 'Helpdesk')} · #{ticket}"
-    data = {"ticketId": str(ticket), "type": event}
+    title = f"{TITLES.get(event_type, 'Helpdesk')} · #{ticket}"
+    data = {"ticketId": str(ticket), "type": event_type}
 
     for device in devices:
         if not device.device_token:

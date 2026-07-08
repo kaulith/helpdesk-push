@@ -21,12 +21,12 @@ def _ticket_assignees(ticket):
     return frappe.parse_json(assigned) if assigned else []
 
 
-def _enqueue(agent, ticket, event):
+def _enqueue(agent, ticket, event_type):
     frappe.enqueue(
         "helpdesk_push.fcm.notify_agent",
         queue="short",
         enqueue_after_commit=True,
         agent=agent,
         ticket=ticket,
-        event=event,
+        event_type=event_type,
     )
