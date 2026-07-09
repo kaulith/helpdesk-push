@@ -114,20 +114,14 @@ class _Remote:
 
     def assigned_ticket_ids(self, agent):
         rows = self._get(
-            "/api/resource/ToDo",
+            "/api/resource/HD Ticket",
             {
-                "filters": json.dumps(
-                    [
-                        ["reference_type", "=", "HD Ticket"],
-                        ["allocated_to", "=", agent],
-                        ["status", "=", "Open"],
-                    ]
-                ),
-                "fields": json.dumps(["reference_name"]),
+                "filters": json.dumps([["_assign", "like", f"%{agent}%"]]),
+                "fields": json.dumps(["name"]),
                 "limit_page_length": 500,
             },
         )
-        return {row["reference_name"] for row in rows if row.get("reference_name")}
+        return {row["name"] for row in rows if row.get("name")}
 
     def tickets(self, ids):
         out = []
