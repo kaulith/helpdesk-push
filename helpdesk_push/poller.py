@@ -11,7 +11,6 @@ from helpdesk_push.fcm import send_to_agent
 STATE = "HD Push Poll State"
 SLA_EXEMPT = {"Closed", "Resolved", "Replied"}
 SLA_WINDOW_HOURS = 2
-ASSIGN_RECENT_HOURS = 6
 
 
 def poll_all():
@@ -52,13 +51,8 @@ def _poll_agent(client, agent, comments, state, tz):
         return
 
     subjects = {t["name"]: (t.get("subject") or "") for t in tickets}
-    modified = {t["name"]: t.get("modified") for t in tickets}
 
-    recent_cutoff = datetime.now(tz) - timedelta(hours=ASSIGN_RECENT_HOURS)
     for ticket in assigned - set(seen.get("assignments", [])):
-        touched = _parse_dt(modified.get(ticket), tz)
-        if touched and touched < recent_cutoff:
-            continue
         send_to_agent(
             agent,
             f"New ticket assigned · #{ticket}",
@@ -148,7 +142,7 @@ class _Remote:
                 {
                     "filters": json.dumps([["name", "in", ids[start : start + 50]]]),
                     "fields": json.dumps(
-                        ["name", "subject", "status", "last_customer_response", "response_by", "modified"]
+                        ["name", "subject", "status", "last_customer_response", "response_by"]
                     ),
                     "limit_page_length": 100,
                 },
