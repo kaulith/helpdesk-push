@@ -35,8 +35,6 @@ def poll_all():
         for agent in agents:
             _poll_agent(client, agent, comments, state, tz)
         _save_state(state)
-    except requests.RequestException:
-        pass
     except Exception:
         frappe.log_error(frappe.get_traceback(), "helpdesk_push.poller")
 
