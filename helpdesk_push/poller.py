@@ -53,7 +53,7 @@ def _poll_agent(client, agent, comments, state, tz):
     for ticket in assigned - set(seen.get("assignments", [])):
         send_to_agent(
             agent,
-            f"New ticket assigned · #{ticket}",
+            f"New ticket assigned #{ticket}",
             subjects.get(ticket, ""),
             {"ticketId": ticket, "type": "new_assignment"},
         )
@@ -65,7 +65,7 @@ def _poll_agent(client, agent, comments, state, tz):
         if reply and prev_replies.get(name) != reply:
             send_to_agent(
                 agent,
-                f"Customer replied · #{name}",
+                f"Customer replied #{name}",
                 subjects.get(name, ""),
                 {"ticketId": name, "type": "customer_reply"},
             )
@@ -82,7 +82,7 @@ def _poll_agent(client, agent, comments, state, tz):
         if not (mentioned or ticket in assigned):
             continue
         plain = re.sub(r"<[^>]*>", "", content).strip()
-        title = f"You were mentioned · #{ticket}" if mentioned else f"New comment · #{ticket}"
+        title = f"You were mentioned #{ticket}" if mentioned else f"New comment #{ticket}"
         send_to_agent(agent, title, plain[:120], {"ticketId": ticket or "", "type": "new_comment"})
 
     warnable = _sla_warnable(tickets, tz)
@@ -90,10 +90,11 @@ def _poll_agent(client, agent, comments, state, tz):
     for ticket in warnable - prev_sla:
         hours = _hours_until(_ticket_field(tickets, ticket, "response_by"), tz)
         detail = f"First response due in {hours}h" if hours is not None else "First response SLA approaching"
+        subject = subjects.get(ticket, "")
         send_to_agent(
             agent,
-            f"⚠️ SLA warning · #{ticket}",
-            f"{detail} — {subjects.get(ticket, '')}".rstrip(" —"),
+            f"SLA warning #{ticket}",
+            f"{detail}. {subject}" if subject else detail,
             {"ticketId": ticket, "type": "sla_warning"},
         )
 

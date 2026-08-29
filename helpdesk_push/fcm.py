@@ -17,7 +17,7 @@ TITLES = {
 
 def notify_agent(agent, ticket, event_type):
     subject = frappe.db.get_value("HD Ticket", ticket, "subject") or ""
-    title = f"{TITLES.get(event_type, 'Helpdesk')} · #{ticket}"
+    title = f"{TITLES.get(event_type, 'Helpdesk')} #{ticket}"
     send_to_agent(agent, title, subject, {"ticketId": str(ticket), "type": event_type})
 
 
