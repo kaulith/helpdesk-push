@@ -5,6 +5,42 @@ import requests
 from frappe.rate_limiter import rate_limit
 from frappe.utils import now
 
+OAUTH_APP_NAME = "Helpdesk Mobile"
+OAUTH_REDIRECT_URI = "helpdesk://oauth/callback"
+
+
+# OAuth client ids are public by design, and the app has to read this one before
+# it can sign anybody in, so there is nobody to authenticate yet.
+@frappe.whitelist(allow_guest=True)
+@rate_limit(limit=20, seconds=60)
+def get_oauth_client_id():
+    return {"client_id": _mobile_oauth_client()}
+
+
+@frappe.whitelist(methods=["POST"])
+def create_oauth_client():
+    frappe.only_for("System Manager")
+
+    name = _mobile_oauth_client()
+    client = frappe.get_doc("OAuth Client", name) if name else frappe.new_doc("OAuth Client")
+    client.app_name = OAUTH_APP_NAME
+    client.scopes = "all openid"
+    client.redirect_uris = OAUTH_REDIRECT_URI
+    client.default_redirect_uri = OAUTH_REDIRECT_URI
+    client.grant_type = "Authorization Code"
+    client.response_type = "Code"
+    # The app ships no client secret, so the token exchange is carried by PKCE.
+    client.token_endpoint_auth_method = "None"
+    client.allowed_roles = []
+    client.append("allowed_roles", {"role": "Desk User"})
+    client.save()
+
+    return {"client_id": client.name}
+
+
+def _mobile_oauth_client():
+    return frappe.db.get_value("OAuth Client", {"app_name": OAUTH_APP_NAME}, "name")
+
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(limit=20, seconds=60)
