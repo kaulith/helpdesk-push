@@ -58,6 +58,14 @@ def _poll_agent(client, agent, comments, state, tz):
             {"ticketId": ticket, "type": "new_assignment"},
         )
 
+    for ticket in set(seen.get("assignments", [])) - assigned:
+        send_to_agent(
+            agent,
+            f"Unassigned from ticket #{ticket}",
+            "",
+            {"ticketId": ticket, "type": "unassignment"},
+        )
+
     prev_replies = seen.get("replies", {})
     for ticket in tickets:
         name = ticket["name"]

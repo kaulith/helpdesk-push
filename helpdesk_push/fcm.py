@@ -12,6 +12,7 @@ FCM_URL = "https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
 TITLES = {
     "new_assignment": "New ticket assigned",
     "customer_reply": "Customer replied",
+    "unassignment": "Unassigned from ticket",
 }
 
 

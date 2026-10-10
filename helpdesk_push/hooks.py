@@ -8,6 +8,10 @@ app_license = "mit"
 doc_events = {
     "ToDo": {
         "after_insert": "helpdesk_push.notifications.on_todo_insert",
+        "on_update": "helpdesk_push.notifications.on_todo_update",
+    },
+    "HD Comment Reaction": {
+        "after_insert": "helpdesk_push.notifications.on_reaction_insert",
     },
     "Communication": {
         "after_insert": "helpdesk_push.notifications.on_communication_insert",
