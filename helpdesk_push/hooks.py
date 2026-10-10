@@ -16,6 +16,9 @@ doc_events = {
     "HD Ticket Comment": {
         "after_insert": "helpdesk_push.notifications.on_ticket_comment_insert",
     },
+    "HD Notification": {
+        "after_insert": "helpdesk_push.notifications.on_notification_insert",
+    },
     "HD Comment Reaction": {
         "after_insert": "helpdesk_push.notifications.on_reaction_insert",
     },

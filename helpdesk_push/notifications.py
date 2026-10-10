@@ -40,6 +40,19 @@ def on_reaction_insert(doc, method=None):
     )
 
 
+# Helpdesk main saves a reaction as a child row through its comment, which runs no
+# hook for the row; its own notification for the comment author is the event there.
+def on_notification_insert(doc, method=None):
+    if doc.notification_type != "Reaction" or not doc.user_to:
+        return
+    _enqueue_push(
+        doc.user_to,
+        f"Reaction on your comment #{doc.reference_ticket}",
+        f"{get_fullname(doc.user_from)} reacted",
+        {"ticketId": str(doc.reference_ticket), "type": "comment_reaction"},
+    )
+
+
 # Helpdesk keeps ticket comments in core Comment on develop and in its own
 # HD Ticket Comment on main.
 def on_comment_insert(doc, method=None):
