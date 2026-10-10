@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import get_fullname
+from frappe.utils import get_fullname, strip_html
 
 
 def on_todo_insert(doc, method=None):
@@ -32,15 +32,38 @@ def on_reaction_insert(doc, method=None):
     author = comment.comment_email or comment.owner
     if author == doc.user:
         return
-    frappe.enqueue(
-        "helpdesk_push.fcm.send_to_agent",
-        queue="short",
-        enqueue_after_commit=True,
-        agent=author,
-        title=f"Reaction on your comment #{comment.reference_name}",
-        body=f"{get_fullname(doc.user)} reacted {doc.emoji}",
-        data={"ticketId": str(comment.reference_name), "type": "comment_reaction"},
+    _enqueue_push(
+        author,
+        f"Reaction on your comment #{comment.reference_name}",
+        f"{get_fullname(doc.user)} reacted {doc.emoji}",
+        {"ticketId": str(comment.reference_name), "type": "comment_reaction"},
     )
+
+
+# Helpdesk keeps ticket comments in core Comment on develop and in its own
+# HD Ticket Comment on main.
+def on_comment_insert(doc, method=None):
+    if doc.reference_doctype != "HD Ticket" or doc.comment_type != "Comment":
+        return
+    _notify_comment(doc.reference_name, doc.comment_email or doc.owner, doc.content)
+
+
+def on_ticket_comment_insert(doc, method=None):
+    _notify_comment(doc.reference_ticket, doc.commented_by, doc.content)
+
+
+def _notify_comment(ticket, author, content):
+    content = content or ""
+    assignees = set(_ticket_assignees(ticket))
+    mentioned = {
+        agent
+        for agent in frappe.get_all("HD Push Device", pluck="agent", distinct=True)
+        if agent and agent.lower() in content.lower()
+    }
+    body = strip_html(content).strip()[:120]
+    for agent in (assignees | mentioned) - {author}:
+        title = f"You were mentioned #{ticket}" if agent in mentioned else f"New comment #{ticket}"
+        _enqueue_push(agent, title, body, {"ticketId": str(ticket), "type": "new_comment"})
 
 
 def on_communication_insert(doc, method=None):
@@ -65,4 +88,16 @@ def _enqueue(agent, ticket, event_type):
         agent=agent,
         ticket=ticket,
         event_type=event_type,
+    )
+
+
+def _enqueue_push(agent, title, body, data):
+    frappe.enqueue(
+        "helpdesk_push.fcm.send_to_agent",
+        queue="short",
+        enqueue_after_commit=True,
+        agent=agent,
+        title=title,
+        body=body,
+        data=data,
     )

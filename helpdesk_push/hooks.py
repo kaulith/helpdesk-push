@@ -10,6 +10,12 @@ doc_events = {
         "after_insert": "helpdesk_push.notifications.on_todo_insert",
         "on_update": "helpdesk_push.notifications.on_todo_update",
     },
+    "Comment": {
+        "after_insert": "helpdesk_push.notifications.on_comment_insert",
+    },
+    "HD Ticket Comment": {
+        "after_insert": "helpdesk_push.notifications.on_ticket_comment_insert",
+    },
     "HD Comment Reaction": {
         "after_insert": "helpdesk_push.notifications.on_reaction_insert",
     },
