@@ -94,7 +94,7 @@ def relay_push(device_token: str, title: str, body: str = "", data: dict | str |
         device_token,
         title[:200],
         body[:500],
-        {key: str(data.get(key) or "") for key in ("ticketId", "type")},
+        {key: str(data.get(key) or "")[:100] for key in ("ticketId", "type")},
     )
     return {"delivered": delivered}
 

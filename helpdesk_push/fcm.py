@@ -57,12 +57,18 @@ def _send(token, title, body, data):
     if resp.status_code == 200:
         return True
 
-    status = None
+    error = {}
     try:
-        status = resp.json().get("error", {}).get("status")
+        error = resp.json().get("error", {})
     except Exception:
         pass
-    if resp.status_code == 404 or status in ("NOT_FOUND", "UNREGISTERED"):
+    # FCM names the token as the bad field when it is not one it ever issued.
+    malformed_token = any(
+        violation.get("field") == "message.token"
+        for detail in error.get("details", [])
+        for violation in detail.get("fieldViolations", [])
+    )
+    if resp.status_code == 404 or error.get("status") in ("NOT_FOUND", "UNREGISTERED") or malformed_token:
         return False
 
     frappe.log_error(f"FCM send failed {resp.status_code}: {resp.text}", "helpdesk_push")
