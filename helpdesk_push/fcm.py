@@ -8,6 +8,9 @@ import requests
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 FCM_URL = "https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+# The Firebase project belongs to the mobile app, so only its own bench holds the
+# service account; every other site sends through that bench.
+RELAY_URL = "https://helpdesk-mb.fsn.frappe.cloud/api/method/helpdesk_push.api.relay_push"
 
 TITLES = {
     "new_assignment": "New ticket assigned",
@@ -33,7 +36,9 @@ def send_to_agent(agent, title, body, data):
 
 
 def _send(token, title, body, data):
-    sa = _service_account()
+    sa = service_account()
+    if not sa:
+        return _send_through_relay(token, title, body, data)
     access_token = _access_token(sa)
     payload = {
         "message": {
@@ -62,6 +67,18 @@ def _send(token, title, body, data):
 
     frappe.log_error(f"FCM send failed {resp.status_code}: {resp.text}", "helpdesk_push")
     return None
+
+
+def _send_through_relay(token, title, body, data):
+    resp = requests.post(
+        frappe.conf.get("push_relay_url") or RELAY_URL,
+        json={"device_token": token, "title": title, "body": body, "data": data},
+        timeout=10,
+    )
+    if resp.status_code != 200:
+        frappe.log_error(f"Push relay failed {resp.status_code}: {resp.text}", "helpdesk_push")
+        return None
+    return resp.json().get("message", {}).get("delivered")
 
 
 def _access_token(sa):
@@ -100,7 +117,7 @@ def _access_token(sa):
     return token["access_token"]
 
 
-def _service_account():
+def service_account():
     sa = frappe.conf.get("fcm_service_account")
     if isinstance(sa, str):
         sa = json.loads(sa)
@@ -109,6 +126,4 @@ def _service_account():
         if path:
             with open(path) as f:
                 sa = json.load(f)
-    if not sa:
-        frappe.throw("fcm_service_account not configured in site_config")
     return sa

@@ -5,6 +5,8 @@ import requests
 from frappe.rate_limiter import rate_limit
 from frappe.utils import now
 
+from helpdesk_push.fcm import _send, service_account
+
 OAUTH_APP_NAME = "Helpdesk Mobile"
 OAUTH_REDIRECT_URI = "helpdesk://oauth/callback"
 
@@ -77,6 +79,24 @@ def unregister_device(device_token):
     if name:
         frappe.delete_doc("HD Push Device", name, ignore_permissions=True, force=True)
     return {"success": True}
+
+
+# Sites without the Firebase service account send their pushes here. The device
+# token is the capability: FCM only delivers to a token the caller already holds,
+# and a site only learns one when that device registers with it.
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+@rate_limit(limit=120, seconds=60)
+def relay_push(device_token: str, title: str, body: str = "", data: dict | str | None = None):
+    if not service_account():
+        frappe.throw("Push relay is not available on this site", frappe.ValidationError)
+    data = frappe.parse_json(data) or {}
+    delivered = _send(
+        device_token,
+        title[:200],
+        body[:500],
+        {key: str(data.get(key) or "") for key in ("ticketId", "type")},
+    )
+    return {"delivered": delivered}
 
 
 # The app sends X-Remote-Token only when its Helpdesk site is a different bench
