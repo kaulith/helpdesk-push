@@ -79,8 +79,11 @@ def _poll_agent(client, agent, comments, state, tz):
             )
 
     seen_comments = set(seen.get("comment_ids", []))
+    # A state saved before core comments were read has seen none of them; that poll
+    # only records them, or every recent one would notify at once.
+    notifiable = [c for c in comments if seen.get("core_comments") or c["doctype"] != "Comment"]
     username = agent.split("@")[0]
-    for comment in comments:
+    for comment in notifiable:
         cid = comment.get("name")
         if not cid or cid in seen_comments or comment.get("commented_by") == agent:
             continue
@@ -156,15 +159,43 @@ class _Remote:
             )
         return out
 
+    # Helpdesk main keeps ticket comments in HD Ticket Comment, develop in core
+    # Comment. A site refuses or lacks the one it does not use.
     def recent_comments(self):
-        return self._get(
-            "/api/resource/HD Ticket Comment",
-            {
-                "fields": json.dumps(["name", "content", "commented_by", "reference_ticket"]),
-                "order_by": "creation desc",
-                "limit_page_length": 100,
-            },
+        ticket_comments = self._recent(
+            "HD Ticket Comment", ["name", "content", "commented_by", "reference_ticket"]
         )
+        core_comments = self._recent(
+            "Comment",
+            ["name", "content", "comment_email", "owner", "reference_name"],
+            [["reference_doctype", "=", "HD Ticket"], ["comment_type", "=", "Comment"]],
+        )
+        # Comments Helpdesk moved kept their names, so one can show up in both lists.
+        comments = {comment["name"]: {**comment, "doctype": "HD Ticket Comment"} for comment in ticket_comments}
+        for comment in core_comments:
+            comments[comment["name"]] = {
+                "doctype": "Comment",
+                "name": comment["name"],
+                "content": comment.get("content"),
+                "commented_by": comment.get("comment_email") or comment.get("owner"),
+                "reference_ticket": comment.get("reference_name"),
+            }
+        return list(comments.values())
+
+    def _recent(self, doctype, fields, filters=None):
+        params = {
+            "fields": json.dumps(fields),
+            "order_by": "creation desc",
+            "limit_page_length": 100,
+        }
+        if filters:
+            params["filters"] = json.dumps(filters)
+        try:
+            return self._get(f"/api/resource/{doctype}", params)
+        except requests.HTTPError as e:
+            if e.response.status_code in (403, 404):
+                return []
+            raise
 
 
 def _sla_warnable(tickets, tz):
@@ -215,6 +246,7 @@ def _snapshot(assigned, tickets, comments, tz, extra_comment_ids=frozenset(), sl
         "assignments": list(assigned),
         "replies": {t["name"]: (t.get("last_customer_response") or "") for t in tickets},
         "comment_ids": comment_ids[:500],
+        "core_comments": True,
         "sla_warned": list(sla),
     }
 
